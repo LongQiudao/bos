@@ -1,0 +1,209 @@
+package com.catfish.bos.web.action;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.servlet.ServletOutputStream;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.poi.hssf.usermodel.HSSFRow;
+import org.apache.poi.hssf.usermodel.HSSFSheet;
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.shiro.authz.annotation.RequiresPermissions;
+import org.apache.struts2.ServletActionContext;
+import org.hibernate.criterion.DetachedCriteria;
+import org.hibernate.criterion.Restrictions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Controller;
+
+import com.catfish.bos.domain.Decidedzone;
+import com.catfish.bos.domain.Region;
+import com.catfish.bos.domain.Subarea;
+import com.catfish.bos.service.IRegionService;
+import com.catfish.bos.service.ISubareaService;
+import com.catfish.bos.utils.FileUtils;
+import com.catfish.bos.web.action.base.BaseAction;
+
+@Controller
+@Scope("prototype")
+public class SubareaAction extends BaseAction<Subarea>{
+	@Autowired 
+	private ISubareaService subareaService;
+	@Autowired
+	private IRegionService regionService;
+	
+	/**
+	 * 添加分区
+	 * */
+	@RequiresPermissions("subarea-add")
+	public String add() {
+		subareaService.save(model);
+		return LIST;
+	}
+	private File subareaFile;
+	
+	public void setSubareaFile(File subareaFile) {
+		this.subareaFile = subareaFile;
+	}
+	/**
+	 * 分区导入
+	 * @throws IOException 
+	 * @throws FileNotFoundException 
+	 * */
+	@RequiresPermissions("subarea-importXls")
+	public String importXls() throws FileNotFoundException, IOException {
+		List<Subarea> list = new ArrayList<Subarea>();
+		HSSFWorkbook hssfWorkbook = new HSSFWorkbook(new FileInputStream(subareaFile));
+		HSSFSheet hssfSheet = hssfWorkbook.getSheetAt(0);
+		for (Row row : hssfSheet) {
+			int number = row.getRowNum();
+			if(number==0) {
+				continue;
+			}
+			String rid = row.getCell(1).getStringCellValue();
+			Region region = regionService.findById(rid);
+			Subarea subarea = new Subarea();
+			subarea.setAddresskey(row.getCell(2).getStringCellValue());
+			subarea.setStartnum(row.getCell(3).getStringCellValue());
+			subarea.setEndnum(row.getCell(4).getStringCellValue());
+			subarea.setSingle(row.getCell(5).getStringCellValue());
+			subarea.setPosition(row.getCell(6).getStringCellValue());
+			subarea.setRegion(region);
+			list.add(subarea);
+		}
+		subareaService.saveBatch(list);
+		return LIST;
+	}
+	/**
+	 * 分区分页查询
+	 * */
+	public String pageQuery() {
+		DetachedCriteria dc = pageBean.getDetachedCriteria();
+		String addresskey= model.getAddresskey();
+		Region region = model.getRegion();
+		if(StringUtils.isNotBlank(addresskey)) {
+			dc.add(Restrictions.like("addresskey", "%"+addresskey+"%"));
+		}
+		if(region != null) {
+			String province = region.getProvince();
+			String city = region.getCity();
+			String district = region.getDistrict();
+			//多表关联查询使用别名来实现
+			dc.createAlias("region", "r");
+			if(StringUtils.isNotBlank(province)) {
+				dc.add(Restrictions.like("r.province", "%"+province+"%"));
+			}
+			if(StringUtils.isNotBlank(city)) {
+				dc.add(Restrictions.like("r.city", "%"+city+"%"));
+			}
+			if(StringUtils.isNotBlank(district)) {
+				dc.add(Restrictions.like("r.district", "%"+district+"%"));
+			}
+		}
+		subareaService.pageQuery(pageBean);
+		this.javatojson(pageBean, new String[]{"currentPage","detachedCriteria","pageSize",
+				"decidedzone","subareas"});
+		return NONE;
+	}
+	/**
+	 * 分区数据导出功能
+	 * @throws IOException 
+	 * */
+	@RequiresPermissions("subarea-exportXls")
+	public String exportXls() throws IOException {
+		List<Subarea> list = subareaService.findAll();
+		HSSFWorkbook workbook = new HSSFWorkbook();
+		HSSFSheet sheet = workbook.createSheet("分区数据");
+		HSSFRow headRow = sheet.createRow(0);
+		headRow.createCell(0).setCellValue("分区编号");
+		headRow.createCell(1).setCellValue("开始编号");
+		headRow.createCell(2).setCellValue("结束编号");
+		headRow.createCell(3).setCellValue("位置信息");
+		headRow.createCell(4).setCellValue("单双号");
+		headRow.createCell(5).setCellValue("关键字");
+		headRow.createCell(6).setCellValue("省市区");
+		for (Subarea subarea : list) {
+			HSSFRow dataRow = sheet.createRow(sheet.getLastRowNum()+1);	
+			dataRow.createCell(0).setCellValue(subarea.getId());
+			dataRow.createCell(1).setCellValue(subarea.getStartnum());
+			dataRow.createCell(2).setCellValue(subarea.getEndnum());
+			dataRow.createCell(3).setCellValue(subarea.getPosition());
+			dataRow.createCell(4).setCellValue(subarea.getSingle());
+			dataRow.createCell(5).setCellValue(subarea.getAddresskey());
+			dataRow.createCell(6).setCellValue(subarea.getRegion().getName());
+		}
+		String filename = "分区数据.xls";
+		String contentType = ServletActionContext.getServletContext().getMimeType(filename);
+		ServletOutputStream out = ServletActionContext.getResponse().getOutputStream();
+		ServletActionContext.getResponse().setContentType(contentType);
+		
+		//获取客户端浏览器类型
+		String agent = ServletActionContext.getRequest().getHeader("User-Agent");
+		filename = FileUtils.encodeDownloadFilename(filename, agent);
+		ServletActionContext.getResponse().setHeader("content-disposition", "attachment;filename="+filename);
+		workbook.write(out);
+		return NONE;
+	}
+	private String ids;
+	public String getIds() {
+		return ids;
+	}
+	public void setIds(String ids) {
+		this.ids = ids;
+	}
+	/**
+	 * 批量删除分区
+	 * */
+	@RequiresPermissions("subarea-delete")
+	public String deleteBatch() {
+		subareaService.deleteBatch(ids);
+		return LIST;
+	
+	}
+	/**
+	 * 修改分区
+	 * */
+	@RequiresPermissions("subarea-edit")
+	public String edit() {
+		Subarea subarea = new Subarea();
+		subarea.setId(model.getId());
+		subarea.setAddresskey(model.getAddresskey());
+		subarea.setRegion(model.getRegion());
+		subarea.setStartnum(model.getStartnum());
+		subarea.setEndnum(model.getEndnum());
+		subarea.setSingle(model.getSingle());
+		subarea.setPosition(model.getPosition());
+		subareaService.update(subarea);
+		return LIST;	
+		}
+	/**
+	 * 查询所有未关联分区的数据
+	 * */
+	public String listajax() {
+		List<Subarea> list = subareaService.findListNotAssociation();
+		this.javatojson(list, new String[] {"decidedzone","region","startnum","endnum","single"});
+		return NONE;
+	}
+	private String decidedzoneId;
+	/**
+	 * 根据定区id查询关联的分区
+	 * */
+	public String findListByDecidedzoneId() {
+		List<Subarea> list = subareaService.findListByDecidedzoneId(decidedzoneId);
+		this.javatojson(list, new String[] {"decidedzone","subareas"});
+		return NONE;
+	}
+	public String getDecidedzoneId() {
+		return decidedzoneId;
+	}
+	public void setDecidedzoneId(String decidedzoneId) {
+		this.decidedzoneId = decidedzoneId;
+	}
+}
+

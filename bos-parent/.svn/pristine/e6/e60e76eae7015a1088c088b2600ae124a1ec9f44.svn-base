@@ -1,0 +1,50 @@
+package com.catfish.bos.service.impl;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.catfish.bos.dao.IUserDao;
+import com.catfish.bos.domain.User;
+import com.catfish.bos.service.IUserService;
+import com.catfish.bos.utils.MD5Utils;
+import com.catfish.bos.utils.PageBean;
+@Service
+@Transactional
+public class UserServiceImpl implements IUserService{
+	@Autowired
+	private IUserDao userDao;
+	/**
+	 * 用户登录
+	 * */
+	public User login(User user) {
+		String password=MD5Utils.md5(user.getPassword());
+		return userDao.findUserByUsernameAndPassword(user.getUsername(),password);
+	}
+	/**
+	 * 修改当前用户密码
+	 * */
+	public void editPassword(String id, String password) {
+		password=MD5Utils.md5(password);
+		userDao.excuteUpdate("user.editpassword",password,id);
+		
+	}
+	/**
+	 * 用户分页查询
+	 * */
+	public void pageQuery(PageBean pageBean) {
+		userDao.pageQuery(pageBean);
+		
+	}
+	/**
+	 * 新增客户
+	 * */
+	public void save(User model) {
+		String password = model.getPassword();
+		password = MD5Utils.md5(password);
+		model.setPassword(password);
+		userDao.save(model);
+		
+	}
+	
+}

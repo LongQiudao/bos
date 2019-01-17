@@ -1,0 +1,69 @@
+package com.catfish.bos.web.action;
+
+import java.util.List;
+
+import org.hibernate.criterion.DetachedCriteria;
+import org.hibernate.criterion.Restrictions;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Controller;
+
+import com.catfish.bos.domain.Noticebill;
+import com.catfish.bos.service.INoticebillService;
+import com.catfish.bos.web.action.base.BaseAction;
+import com.catfish.crm.service.Customer;
+/**
+ * 业务通知单管理
+ * */
+import com.catfish.crm.service.ICustomerService;
+@Controller
+@Scope("prototype")
+public class NoticebillAction extends BaseAction<Noticebill>{
+	@Autowired
+	private INoticebillService noticebillService;
+	//注入crm代理端客户对象
+	@Autowired
+	private ICustomerService customerService;
+	/**
+	 * 远程调用crm服务,根据手机号查询客户信息
+	 * */
+	public String findCustomerByTelephone() {
+		String telephone = model.getTelephone();
+		Customer customer = customerService.findCustomerByTelephone(telephone);
+		this.javatojson(customer, new String[] {});
+		return NONE;
+	}
+	/**
+	 * 添加业务通知单,并尝试自动分单
+	 * */
+	
+	public String add() {
+		noticebillService.save(model);
+		return "noticebill_add";
+	}
+	/**
+	 * 业务通知单分页查询方法
+	 * */
+	public String pageQuery() {
+		DetachedCriteria dc = pageBean.getDetachedCriteria();
+		dc.add(Restrictions.isNull("staff"));
+		noticebillService.pageQuery(pageBean);	
+		this.javatojson(pageBean, new String[] {"decidedzones","workbills","currentPage","detachedCriteria","pageSize"});
+		return NONE;
+	}
+	/**
+	 * 通过订单状态查询业务通知单
+	 * */
+	public String findNoticebillByOrdertype() {
+		List<Noticebill> list = noticebillService.findNoticebillByOrdertype();
+		this.javatojson(list, new String[] {"decidedzones","workbills","currentPage","detachedCriteria","pageSize"});
+		return NONE;
+	}
+	/**
+	 *人工调度
+	 * */
+	public String diaodu() {
+		noticebillService.diaodu(model);
+		return LIST;
+	}
+}

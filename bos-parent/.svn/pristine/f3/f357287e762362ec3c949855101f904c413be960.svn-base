@@ -1,0 +1,38 @@
+package com.catfish.bos.realm;
+
+import org.apache.shiro.authc.AuthenticationException;
+import org.apache.shiro.authc.AuthenticationInfo;
+import org.apache.shiro.authc.AuthenticationToken;
+import org.apache.shiro.authc.SimpleAuthenticationInfo;
+import org.apache.shiro.authc.UsernamePasswordToken;
+import org.apache.shiro.authz.AuthorizationInfo;
+import org.apache.shiro.realm.AuthorizingRealm;
+import org.apache.shiro.subject.PrincipalCollection;
+import org.springframework.beans.factory.annotation.Autowired;
+
+import com.catfish.bos.dao.IUserDao;
+import com.catfish.bos.domain.User;
+
+public class BOSRealm extends AuthorizingRealm{
+	@Autowired 
+	private IUserDao userDao;
+	//授权方法
+	protected AuthorizationInfo doGetAuthorizationInfo(PrincipalCollection arg0) {
+		System.out.println("????");
+		return null;
+	}
+
+	//认证方法
+	protected AuthenticationInfo doGetAuthenticationInfo(AuthenticationToken arg0) throws AuthenticationException {
+		UsernamePasswordToken passwordToken=(UsernamePasswordToken) arg0;
+		String username = passwordToken.getUsername();
+		User user  = userDao.findUserByUsername(username);
+		if(user==null) {
+			//页面输入的用户不存在
+			return null;
+		}
+		AuthenticationInfo info = new SimpleAuthenticationInfo(user,user.getPassword(),this.getName());
+		return info;
+	}
+
+}
